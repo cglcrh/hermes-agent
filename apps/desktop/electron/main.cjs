@@ -1070,8 +1070,8 @@ function resolveHermesBackend(dashboardArgs) {
   const activePresent = isHermesSourceRoot(ACTIVE_HERMES_ROOT)
   if (factoryPresent || activePresent) {
     throw new Error(
-      'Hermes payload is present but no Python 3.11+ interpreter could be found. ' +
-        'Install Python 3.11+ from https://www.python.org/downloads/ or the Microsoft Store, ' +
+      'Hermes payload is present but no supported Python interpreter could be found. ' +
+        'On Windows, install Python 3.11, 3.12, or 3.13 from https://www.python.org/downloads/, ' +
         'then relaunch Hermes.'
     )
   }
@@ -1135,8 +1135,8 @@ async function ensureRuntime(backend) {
     const systemPython = findSystemPython()
     if (!systemPython) {
       throw new Error(
-        'Python 3.11+ is required to bootstrap Hermes. Install Python from ' +
-          'https://www.python.org/downloads/ (or the Microsoft Store on Windows), then relaunch Hermes.'
+        'A supported Python interpreter is required to bootstrap Hermes. ' +
+          'On Windows, install Python 3.11, 3.12, or 3.13 from https://www.python.org/downloads/, then relaunch Hermes.'
       )
     }
     await advanceBootProgress('runtime.venv', 'Creating Hermes virtual environment', 50)

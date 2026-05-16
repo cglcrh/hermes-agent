@@ -723,22 +723,52 @@ hermes_prereq_not_silent:
 
     StrCpy $0 "0"
     ${If} ${FileExists} "$PROGRAMFILES64\nodejs\node.exe"
-      StrCpy $0 "1"
-    ${ElseIf} ${FileExists} "$PROGRAMFILES\nodejs\node.exe"
-      StrCpy $0 "1"
-    ${ElseIf} ${FileExists} "$PROGRAMFILES32\nodejs\node.exe"
-      StrCpy $0 "1"
-    ${ElseIf} ${FileExists} "$LOCALAPPDATA\Programs\nodejs\node.exe"
-      StrCpy $0 "1"
+      Push '"$PROGRAMFILES64\nodejs\node.exe" -e "process.exit(Number(process.versions.node.split(String.fromCharCode(46))[0]) >= 20 ? 0 : 1)"'
+      Call HermesProbe
+      ${If} $0 == 0
+        StrCpy $0 "1"
+      ${Else}
+        StrCpy $0 "0"
+      ${EndIf}
+    ${EndIf}
+    ${If} $0 == "0"
+    ${AndIf} ${FileExists} "$PROGRAMFILES\nodejs\node.exe"
+      Push '"$PROGRAMFILES\nodejs\node.exe" -e "process.exit(Number(process.versions.node.split(String.fromCharCode(46))[0]) >= 20 ? 0 : 1)"'
+      Call HermesProbe
+      ${If} $0 == 0
+        StrCpy $0 "1"
+      ${Else}
+        StrCpy $0 "0"
+      ${EndIf}
+    ${EndIf}
+    ${If} $0 == "0"
+    ${AndIf} ${FileExists} "$PROGRAMFILES32\nodejs\node.exe"
+      Push '"$PROGRAMFILES32\nodejs\node.exe" -e "process.exit(Number(process.versions.node.split(String.fromCharCode(46))[0]) >= 20 ? 0 : 1)"'
+      Call HermesProbe
+      ${If} $0 == 0
+        StrCpy $0 "1"
+      ${Else}
+        StrCpy $0 "0"
+      ${EndIf}
+    ${EndIf}
+    ${If} $0 == "0"
+    ${AndIf} ${FileExists} "$LOCALAPPDATA\Programs\nodejs\node.exe"
+      Push '"$LOCALAPPDATA\Programs\nodejs\node.exe" -e "process.exit(Number(process.versions.node.split(String.fromCharCode(46))[0]) >= 20 ? 0 : 1)"'
+      Call HermesProbe
+      ${If} $0 == 0
+        StrCpy $0 "1"
+      ${Else}
+        StrCpy $0 "0"
+      ${EndIf}
     ${EndIf}
 
     ${If} $0 == "1"
       DetailPrint "Node.js installed successfully."
-      ${HermesLog} "Node.js install succeeded (filesystem probe positive)"
+      ${HermesLog} "Node.js install succeeded (version probe positive)"
     ${Else}
-      DetailPrint "Node.js install did not complete (node.exe not found at standard install locations)."
-      ${HermesLog} "Node.js install failed or needs a restart (filesystem probe negative)."
-      MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "Node.js install via winget did not complete successfully.$\r$\n$\r$\nSee log: $HermesLogPath$\r$\n$\r$\nInstall Node.js manually from https://nodejs.org/en/download/ if Hermes browser tools or Node-backed capabilities fail."
+      DetailPrint "Node.js install did not complete (Node 20+ not found at standard install locations)."
+      ${HermesLog} "Node.js install failed or needs a restart (version probe negative)."
+      MessageBox MB_OK|MB_ICONEXCLAMATION|MB_TOPMOST "Node.js install via winget did not complete successfully.$\r$\n$\r$\nSee log: $HermesLogPath$\r$\n$\r$\nInstall Node.js 20+ manually from https://nodejs.org/en/download/ if Hermes browser tools or Node-backed capabilities fail."
     ${EndIf}
   ${EndIf}
 
