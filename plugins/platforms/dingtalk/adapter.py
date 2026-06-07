@@ -1554,7 +1554,15 @@ async def _standalone_send(
                 return {"error": f"DingTalk API error: {data.get('errmsg', 'unknown')}"}
         return {"success": True, "platform": "dingtalk", "chat_id": chat_id}
     except Exception as e:
-        return {"error": f"DingTalk send failed: {e}"}
+        # Redact the access_token from webhook URLs that may appear in the
+        # exception text. Reuse send_message_tool._error's redaction so the
+        # logic stays single-sourced (lazy import avoids a circular at module
+        # load). Falls back to a plain message if that helper is unavailable.
+        try:
+            from tools.send_message_tool import _error as _redact_error
+            return _redact_error(f"DingTalk send failed: {e}")
+        except Exception:
+            return {"error": f"DingTalk send failed: {e}"}
 
 
 def interactive_setup() -> None:
