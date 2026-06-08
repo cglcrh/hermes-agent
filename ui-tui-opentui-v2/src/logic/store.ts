@@ -55,6 +55,8 @@ export type ActivePrompt =
   | { kind: 'approval'; command: string; description: string }
   | { kind: 'sudo'; requestId: string }
   | { kind: 'secret'; envVar: string; prompt: string; requestId: string }
+  // local (non-gateway) Y/N confirm — e.g. /clear, /new (spec §2a)
+  | { kind: 'confirm'; message: string; onConfirm: () => void }
 
 export interface StoreState {
   ready: boolean
@@ -150,6 +152,25 @@ export function createSessionStore() {
         draft.messages.push({ role: 'user', text })
       })
     )
+  }
+
+  /** Push a system line (slash output, errors, notices). */
+  function pushSystem(text: string) {
+    setState(
+      produce(draft => {
+        draft.messages.push({ role: 'system', text })
+      })
+    )
+  }
+
+  /** Clear the transcript (e.g. /clear, /new). */
+  function clearTranscript() {
+    setState('messages', [])
+  }
+
+  /** Open a local Y/N confirm dialog (non-gateway; e.g. /clear). */
+  function setConfirm(message: string, onConfirm: () => void) {
+    setState('prompt', { kind: 'confirm', message, onConfirm })
   }
 
   /** Reduce a decoded gateway event into the store. The sole boundary->Solid sink. */
@@ -299,7 +320,17 @@ export function createSessionStore() {
     for (const event of pending) applyNow(event)
   }
 
-  return { state, apply, pushUser, hydrate, duplicate, clearPrompt } as const
+  return {
+    state,
+    apply,
+    pushUser,
+    pushSystem,
+    clearTranscript,
+    setConfirm,
+    hydrate,
+    duplicate,
+    clearPrompt
+  } as const
 }
 
 export type SessionStore = ReturnType<typeof createSessionStore>

@@ -27,6 +27,7 @@ import { liveGatewayLayer } from '../boundary/gateway/liveGateway.ts'
 import { getLog } from '../boundary/log.ts'
 import { acquireRenderer } from '../boundary/renderer.ts'
 import { makeAppLayer } from '../boundary/runtime.ts'
+import { dispatchSlash, type SlashContext } from '../logic/slash.ts'
 import { createSessionStore, type SessionStore } from '../logic/store.ts'
 import { App } from '../view/App.tsx'
 import { ThemeProvider } from '../view/theme.tsx'
@@ -96,10 +97,9 @@ export const run = Effect.fn('Tui.run')(function* (input: TuiInput) {
       const gateway = yield* GatewayService
       yield* gateway.subscribe(event => store.apply(event))
 
-      // Composer submit: a plain callback the Solid view calls. The service value
-      // is already in hand, so `gateway.request(...)` is Effect<…, never> — fire it
-      // detached with runFork; failures are logged, never thrown into the view.
-      const submit = (text: string) => {
+      // Submit a user turn: the service value is in hand, so `gateway.request(...)`
+      // is Effect<…, never> — fire it detached with runFork; failures are logged.
+      const submitPrompt = (text: string) => {
         store.pushUser(text)
         const sid = gateway.sessionId()
         if (!sid) {
@@ -113,6 +113,30 @@ export const run = Effect.fn('Tui.run')(function* (input: TuiInput) {
               Effect.catchCause(cause => Effect.sync(() => getLog().warn('submit', 'failed', { cause: String(cause) })))
             )
         )
+      }
+
+      // Slash dispatch context (Solid logic; the boundary just hands it a
+      // Promise-returning `request` + the host capabilities it needs).
+      const slashCtx: SlashContext = {
+        clearTranscript: () => store.clearTranscript(),
+        confirm: (message, onConfirm) => store.setConfirm(message, onConfirm),
+        logTail: () =>
+          getLog()
+            .tail(40)
+            .map(e => `${e.scope}: ${e.msg}`),
+        pushSystem: text => store.pushSystem(text),
+        quit: () => {
+          if (!renderer.isDestroyed) renderer.destroy()
+        },
+        request: (method, params) => Effect.runPromise(gateway.request(method, params)),
+        sessionId: () => gateway.sessionId(),
+        submit: submitPrompt
+      }
+
+      // The composer's submit: route `/command` through the slash ladder, else a prompt.
+      const submit = (text: string) => {
+        if (text.startsWith('/')) void dispatchSlash(text, slashCtx)
+        else submitPrompt(text)
       }
 
       // Blocking-prompt replies (clarify/approval/sudo/secret `*.respond`). Same

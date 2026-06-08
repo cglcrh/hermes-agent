@@ -14,6 +14,7 @@ import { Match, Switch } from 'solid-js'
 import type { SessionStore } from '../../logic/store.ts'
 import { ApprovalPrompt } from './approvalPrompt.tsx'
 import { ClarifyPrompt } from './clarifyPrompt.tsx'
+import { ConfirmPrompt } from './confirmPrompt.tsx'
 import { MaskedPrompt } from './maskedPrompt.tsx'
 
 export interface PromptOverlayProps {
@@ -24,9 +25,13 @@ export interface PromptOverlayProps {
 
 export function PromptOverlay(props: PromptOverlayProps) {
   const prompt = () => props.store.state.prompt
+  // Defer the prompt-clear (which remounts + refocuses the composer) past the
+  // CURRENT keystroke, so the key that answered the prompt (Enter/y/select) can't
+  // leak into the freshly-focused composer (e.g. `/clear`→y left "y" in the input).
+  const clearSoon = () => setTimeout(() => props.store.clearPrompt(), 0)
   const respond = (method: string, params: Record<string, unknown>) => {
     props.onRespond(method, params)
-    props.store.clearPrompt()
+    clearSoon()
   }
 
   const asApproval = () => {
@@ -44,6 +49,10 @@ export function PromptOverlay(props: PromptOverlayProps) {
   const asSecret = () => {
     const p = prompt()
     return p && p.kind === 'secret' ? p : undefined
+  }
+  const asConfirm = () => {
+    const p = prompt()
+    return p && p.kind === 'confirm' ? p : undefined
   }
 
   return (
@@ -86,6 +95,18 @@ export function PromptOverlay(props: PromptOverlayProps) {
             sub={p().prompt}
             onSubmit={value => respond('secret.respond', { request_id: p().requestId, value })}
             onCancel={() => respond('secret.respond', { request_id: p().requestId, value: '' })}
+          />
+        )}
+      </Match>
+      <Match when={asConfirm()}>
+        {p => (
+          <ConfirmPrompt
+            message={p().message}
+            onYes={() => {
+              p().onConfirm()
+              clearSoon()
+            }}
+            onNo={clearSoon}
           />
         )}
       </Match>
