@@ -1,0 +1,5 @@
+name: workbench_bridge
+version: 0.1.0
+description: Bridge Hermes gateway messages to 91 AI Workbench ingress.
+provides_hooks:
+  - pre_gateway_dispatch
