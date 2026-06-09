@@ -161,11 +161,11 @@ def _workbench_url() -> str:
 
 
 def _timeout_seconds() -> float:
-    raw = os.getenv("HERMES_WORKBENCH_TIMEOUT", "180").strip()
+    raw = os.getenv("HERMES_WORKBENCH_TIMEOUT", "10").strip()
     try:
-        return max(30.0, float(raw))
+        return max(5.0, float(raw))
     except ValueError:
-        return 180.0
+        return 10.0
 
 
 def _reply_attempts() -> int:
