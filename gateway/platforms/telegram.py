@@ -5442,9 +5442,7 @@ class TelegramAdapter(BasePlatformAdapter):
             try:
                 # msg.photo is a list of PhotoSize sorted by size; take the largest
                 photo = msg.photo[-1]
-                file_obj = await photo.get_file()
-                # Download the image bytes directly into memory
-                image_bytes = await file_obj.download_as_bytearray()
+                file_obj, image_bytes = await self._download_photo_with_retry(photo)
                 # Determine extension from the file path if available
                 ext = ".jpg"
                 if file_obj.file_path:
@@ -5649,6 +5647,21 @@ class TelegramAdapter(BasePlatformAdapter):
             return
 
         await self.handle_message(event)
+
+    async def _download_photo_with_retry(self, photo, attempts: int = 3):
+        last_error = None
+        for attempt in range(1, attempts + 1):
+            try:
+                file_obj = await photo.get_file()
+                image_bytes = await file_obj.download_as_bytearray()
+                return file_obj, image_bytes
+            except Exception as exc:
+                last_error = exc
+                if attempt >= attempts:
+                    break
+                await asyncio.sleep(min(1.5 * attempt, 4.0))
+                logger.warning("[Telegram] Photo cache attempt %s/%s failed: %s", attempt, attempts, type(exc).__name__)
+        raise last_error
 
     async def _queue_media_group_event(self, media_group_id: str, event: MessageEvent) -> None:
         """Buffer Telegram media-group items so albums arrive as one logical event.
