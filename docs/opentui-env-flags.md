@@ -28,6 +28,7 @@ classified by who should ever touch it. The design rule shipped with this doc:
 | `HERMES_TUI_WINDOWING` | **on** | `0` = bit-exact pre-windowing renderer (every row mounts; cap clamps back to 1000). The A/B + regression escape hatch. |
 | `HERMES_TUI_WINDOW_IDLE_MS` | ~1000 | Idle-measure pulse cadence (the spacer-exactness march). Test knob. |
 | `HERMES_TUI_WINDOW_STATS` | = `HERMES_TUI_DIAGNOSTICS` | Exposes live/peak mounted-row counters (`globalThis.__hermesTuiWindowStats`) for bench/live-attach reads. |
+| `HERMES_TUI_MEMLOG` | = `HERMES_TUI_DIAGNOSTICS` | In-process 1Hz memory self-sampling (`boundary/memlog.ts`) → `~/.hermes/logs/memwatch/<boot>-<pid>.jsonl` (rss/heap/external + mounted rows; 14-day retention). Fleet view: `node bench/memwatch-report.mjs`. The "monitor all my sessions" answer: one `export HERMES_TUI_DIAGNOSTICS=1` in your shell rc covers every session. |
 | `HERMES_TUI_LOG_LEVEL` / `HERMES_TUI_LOG_FILE` | engine defaults | Logging verbosity/destination (`/logs` reads the ring buffer regardless). Deliberately independent of the master switch — support often wants logs without the full diag surface. |
 
 ## 4. Internal plumbing (set by the launcher/bench/tests — humans never set these)
