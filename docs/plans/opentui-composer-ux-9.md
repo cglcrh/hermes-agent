@@ -1,4 +1,12 @@
-# Plan — OpenTUI composer/UX batch (9 features)
+# Plan — OpenTUI composer/UX batch (10 features)
+
+> **STATUS: SHIPPED (2026-06-13).** All 10 features implemented, gate green
+> (ui-opentui 714 tests + 316 gateway + 25 cost tests), F5/F6 verified live via
+> tmux screenshot. Commits: `f4dacc68e` (F1/F2/F7/F8/F8b/F9/F10), `20d516ae9`
+> (F4/F5/F6), `9aa5e54be` (F3). Decisions taken: **D1 = cursor-aware onType**
+> (threaded `ta.cursorOffset`); **D2 = chrome cost is Nous-header-only via a new
+> `nous_header_cost_usd`, `/usage` page kept full via `real_session_cost_usd`**.
+> F10 (right-pinned cwd) was added mid-session by the user.
 
 **Branch:** `feat/opentui-native-engine` · **Engine:** `ui-opentui/` (Node 26)
 **Gate:** `cd ui-opentui && PATH="$HOME/.local/share/fnm/node-versions/v26.3.0/installation/bin:$PATH" npm run check` → exit 0.
