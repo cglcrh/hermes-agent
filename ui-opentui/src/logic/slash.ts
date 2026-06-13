@@ -118,10 +118,10 @@ function isPathLike(word: string): boolean {
 
 /**
  * Decide what to complete for the composer text + cursor offset:
- *   - the text is a slash command — `/` at the very start followed by at least
- *     one command-name char (`/m`, `/model foo`) → `complete.slash {text}`. A
- *     bare `/` (F1) or a `/abs/path` whose first token isn't a valid name (F2) →
- *     no slash menu.
+ *   - the text is a slash command — `/` at the very start → `complete.slash
+ *     {text}`. A bare `/` opens the full command list immediately (glitch
+ *     2026-06-13); `/m`, `/model foo` narrow it. A `/abs/path` whose first token
+ *     isn't a valid name (F2) → no slash menu.
  *   - the WORD under the cursor is an `@`-mention → `complete.path {word}` for
  *     file/dir tagging (F8b).
  *   - otherwise nothing.
@@ -140,7 +140,11 @@ export function planCompletion(text: string, cursor: number = text.length): Comp
     const body = text.slice(1)
     const space = body.search(/\s/)
     const name = space === -1 ? body : body.slice(0, space)
-    if (SLASH_NAME_RE.test(name)) {
+    // Hydrate on a BARE `/` (body === '', glitch 2026-06-13 — open the full
+    // command list on the first slash) or a valid command name. A `/abs/path`
+    // (the lead token contains a `/`) is never a command (F2), and a `/ ` with a
+    // trailing space past an empty name is not arg-completion on nothing.
+    if (body === '' || SLASH_NAME_RE.test(name)) {
       return { from: 0, method: 'complete.slash', params: { text } }
     }
     return null

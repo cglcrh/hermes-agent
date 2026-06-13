@@ -198,6 +198,10 @@ export function Composer(props: {
     const s = suggested()
     return s ? [{ display: `/${s.name}`, meta: 'did you mean? (Tab/Enter to accept)', text: s.name }] : []
   }
+  /** `!`-shell mode (F9): the buffer leads with `!`, so submit runs the rest in
+   *  the shell (no model turn). Drives the distinct prompt glyph + alert note so
+   *  the mode is visually unmistakable. */
+  const shellMode = createMemo(() => bufText().startsWith('!'))
 
   // Native highlight plumbing: one SyntaxStyle per mount holding the token
   // style; ranges are recomputed from `analysis()` on every change (clear+add —
@@ -507,11 +511,22 @@ export function Composer(props: {
           not a background tint. PRIMARY BOLD: the idle view's one bright action
           (design pass — gold sits on the newest answer and on the ❯ waiting for
           the next command, nowhere else). */}
+      {/* shell-mode (F9) affordance: a `!`-led buffer runs in the shell, so the
+          input wears an alert-colored note (this slot is otherwise the slash/path
+          dropdown, which never coexists with `!`). */}
+      <Show when={shellMode()}>
+        <box style={{ flexDirection: 'row', flexShrink: 0, paddingLeft: GUTTER }}>
+          <text selectable={false} fg={theme().color.warn}>
+            {'shell mode — Enter runs this in your shell (no model turn) · Esc/⌫ to leave'}
+          </text>
+        </box>
+      </Show>
       <box style={{ flexDirection: 'row', flexShrink: 0 }}>
         <box style={{ flexShrink: 0, width: GUTTER }}>
           <text selectable={false}>
-            <span style={{ fg: theme().color.primary }}>
-              <b>{theme().brand.prompt}</b>
+            {/* the glyph flips to the shell prompt in an alert color while in `!`-mode */}
+            <span style={{ fg: shellMode() ? theme().color.warn : theme().color.primary }}>
+              <b>{shellMode() ? (theme().brand.shellPrompt ?? '$') : theme().brand.prompt}</b>
             </span>
           </text>
         </box>

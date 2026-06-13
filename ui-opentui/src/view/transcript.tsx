@@ -478,7 +478,16 @@ export function Transcript(props: { store: SessionStore }) {
 
   return (
     <box style={{ flexGrow: 1, minHeight: 0 }}>
-      <scrollbox ref={setScroll} style={{ flexGrow: 1, minHeight: 0 }} stickyScroll stickyStart="bottom">
+      {/* reserve a 1-cell right gutter so the vertical scrollbar never paints OVER
+          hard-width content (markdown tables / code blocks clipped their right
+          border under the bar — glitch 2026-06-13). */}
+      <scrollbox
+        ref={setScroll}
+        style={{ flexGrow: 1, minHeight: 0 }}
+        contentOptions={{ paddingRight: 1 }}
+        stickyScroll
+        stickyStart="bottom"
+      >
         <ScrollAnchorProvider scroll={scroll}>
           {/* display flags (/compact, /details — Epic 3) for the rows below */}
           <DisplayProvider flags={() => ({ compact: props.store.state.compact, details: props.store.state.details })}>

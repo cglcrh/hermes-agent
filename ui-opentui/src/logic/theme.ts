@@ -74,6 +74,8 @@ export interface ThemeBrand {
   name: string
   icon: string
   prompt: string
+  /** The composer glyph while in `!`-shell mode (defaults to `$`); skin-overridable. */
+  shellPrompt?: string
   welcome: string
   goodbye: string
   tool: string
@@ -244,6 +246,7 @@ const BRAND: ThemeBrand = {
   name: 'Hermes Agent',
   icon: '⚕',
   prompt: '❯',
+  shellPrompt: '$',
   welcome: 'Type your message or /help for commands.',
   goodbye: 'Goodbye! ⚕',
   tool: '┊',

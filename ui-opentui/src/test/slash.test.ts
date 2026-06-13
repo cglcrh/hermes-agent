@@ -88,8 +88,9 @@ describe('planCompletion (items 5 + 13)', () => {
     })
   })
 
-  test('a bare `/` does NOT open the slash menu (F1)', () => {
-    expect(planCompletion('/')).toBeNull()
+  test('a bare `/` opens the slash menu (hydrate immediately — glitch 2026-06-13)', () => {
+    expect(planCompletion('/')).toEqual({ from: 0, method: 'complete.slash', params: { text: '/' } })
+    // a trailing space past the (empty) name is not a command — no arg-complete on nothing.
     expect(planCompletion('/ ')).toBeNull()
   })
 

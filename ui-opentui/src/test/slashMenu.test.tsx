@@ -129,16 +129,15 @@ async function mountComposer(historyEntries: string[] = []): Promise<Harness> {
   return { probe, submitted, typed }
 }
 
-describe('slash menu — opens only after a name char (F1)', () => {
-  test('a bare `/` does NOT open the menu (F1 — type a char first)', async () => {
+describe('slash menu — opens on the first slash, hydrating the full command list', () => {
+  test('a bare `/` opens the menu immediately (hydrate on first slash — glitch 2026-06-13)', async () => {
     const h = await mountComposer()
     try {
       await h.probe.keys.typeText('/')
       await h.probe.settle()
       const frame = h.probe.frame()
-      expect(frame).not.toContain('/clear')
-      expect(frame).not.toContain('Esc dismiss')
-      expect(frame).toContain('/') // the slash stays in the composer
+      expect(frame).toContain('/clear')
+      expect(frame).toContain('Esc dismiss')
     } finally {
       h.probe.destroy()
     }
