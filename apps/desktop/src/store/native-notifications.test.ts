@@ -14,8 +14,9 @@ const initialHermesDesktop = desktopWindow.hermesDesktop
 
 const notify = vi.fn().mockResolvedValue(true)
 
-function setWindowHidden(hidden: boolean) {
+function setWindowState({ focused = true, hidden = false }: { focused?: boolean; hidden?: boolean }) {
   Object.defineProperty(document, 'hidden', { configurable: true, value: hidden })
+  Object.defineProperty(document, 'hasFocus', { configurable: true, value: () => focused })
 }
 
 let counter = 0
@@ -38,7 +39,7 @@ beforeEach(() => {
   }
 
   setActiveSessionId(null)
-  setWindowHidden(true)
+  setWindowState({ focused: false, hidden: true })
 })
 
 afterEach(() => {
@@ -55,21 +56,27 @@ describe('dispatchNativeNotification focus gating', () => {
     expect(notify).toHaveBeenCalledTimes(1)
   })
 
-  it('suppresses a completion notification when the window is visible', () => {
-    setWindowHidden(false)
+  it('fires a completion notification when the window is visible but unfocused (alt-tab)', () => {
+    setWindowState({ focused: false, hidden: false })
+    dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
+    expect(notify).toHaveBeenCalledTimes(1)
+  })
+
+  it('suppresses a completion notification when the window is focused', () => {
+    setWindowState({ focused: true, hidden: false })
     dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
     expect(notify).not.toHaveBeenCalled()
   })
 
-  it('fires an attention notification for an off-screen session even when visible', () => {
-    setWindowHidden(false)
+  it('fires an attention notification for an off-screen session even when focused', () => {
+    setWindowState({ focused: true, hidden: false })
     setActiveSessionId('on-screen')
     dispatchNativeNotification({ kind: 'approval', sessionId: 'background', title: 'approve' })
     expect(notify).toHaveBeenCalledTimes(1)
   })
 
-  it('suppresses an attention notification for the active session when visible', () => {
-    setWindowHidden(false)
+  it('suppresses an attention notification for the active session when focused', () => {
+    setWindowState({ focused: true, hidden: false })
     setActiveSessionId('on-screen')
     dispatchNativeNotification({ kind: 'approval', sessionId: 'on-screen', title: 'approve' })
     expect(notify).not.toHaveBeenCalled()
@@ -112,7 +119,7 @@ describe('dispatchNativeNotification throttle', () => {
 
 describe('sendTestNativeNotification', () => {
   it('fires regardless of focus or active session', () => {
-    setWindowHidden(false)
+    setWindowState({ focused: true, hidden: false })
     setActiveSessionId('on-screen')
     sendTestNativeNotification('Hermes', 'works')
     expect(notify).toHaveBeenCalledTimes(1)

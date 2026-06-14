@@ -86,16 +86,27 @@ export function setNativeNotifyKind(kind: NativeNotificationKind, on: boolean) {
 const THROTTLE_MS = 1000
 const lastFiredAt = new Map<string, number>()
 
-function windowHidden(): boolean {
-  return typeof document !== 'undefined' && document.hidden
-}
+// "Backgrounded" = the user isn't looking at Hermes. `document.hidden` only
+// flips when the window is minimized/occluded; alt-tabbing to another app
+// leaves it visible-but-unfocused, so we also check `document.hasFocus()`.
+function isBackgrounded(): boolean {
+  if (typeof document === 'undefined') {
+    return false
+  }
 
-function shouldFire(kind: NativeNotificationKind, sessionId?: null | string): boolean {
-  if (windowHidden()) {
+  if (document.hidden) {
     return true
   }
 
-  // Window is visible: only an attention kind for an off-screen session breaks
+  return typeof document.hasFocus === 'function' && !document.hasFocus()
+}
+
+function shouldFire(kind: NativeNotificationKind, sessionId?: null | string): boolean {
+  if (isBackgrounded()) {
+    return true
+  }
+
+  // Hermes is focused: only an attention kind for an off-screen session breaks
   // through. Everything else is already in front of the user.
   if (!ATTENTION_KINDS.has(kind)) {
     return false
