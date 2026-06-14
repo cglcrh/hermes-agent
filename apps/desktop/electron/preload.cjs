@@ -99,6 +99,11 @@ contextBridge.exposeInMainWorld('hermesDesktop', {
     ipcRenderer.on('hermes:focus-session', listener)
     return () => ipcRenderer.removeListener('hermes:focus-session', listener)
   },
+  onNotificationAction: callback => {
+    const listener = (_event, payload) => callback(payload)
+    ipcRenderer.on('hermes:notification-action', listener)
+    return () => ipcRenderer.removeListener('hermes:notification-action', listener)
+  },
   onPreviewFileChanged: callback => {
     const listener = (_event, payload) => callback(payload)
     ipcRenderer.on('hermes:preview-file-changed', listener)

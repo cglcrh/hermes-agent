@@ -147,6 +147,8 @@ export interface Translations {
     // bodies (the agent's reply, a command, an error) are passed through raw.
     native: {
       approvalTitle: string
+      approveAction: string
+      rejectAction: string
       inputTitle: string
       inputBody: string
       turnDoneTitle: string

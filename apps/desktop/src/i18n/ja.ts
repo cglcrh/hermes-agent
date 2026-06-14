@@ -135,6 +135,8 @@ export const ja = defineLocale({
     },
     native: {
       approvalTitle: '承認が必要です',
+      approveAction: '承認',
+      rejectAction: '拒否',
       inputTitle: '入力が必要です',
       inputBody: 'Hermes が応答を待っています。',
       turnDoneTitle: 'Hermes が完了しました',

@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $gateway } from './gateway'
 import {
   dispatchNativeNotification,
   NATIVE_NOTIFICATION_KINDS,
+  respondToApprovalAction,
   sendTestNativeNotification,
   setNativeNotifyEnabled,
   setNativeNotifyKind
 } from './native-notifications'
+import { $approvalRequest, setApprovalRequest } from './prompts'
 import { $activeSessionId, setActiveSessionId } from './session'
 
 const desktopWindow = window as unknown as { hermesDesktop?: Window['hermesDesktop'] }
@@ -130,5 +133,44 @@ describe('$activeSessionId wiring', () => {
   it('reflects the setter used for gating', () => {
     setActiveSessionId('xyz')
     expect($activeSessionId.get()).toBe('xyz')
+  })
+})
+
+describe('respondToApprovalAction', () => {
+  const request = vi.fn().mockResolvedValue({ resolved: true })
+
+  beforeEach(() => {
+    request.mockClear()
+    $gateway.set({ request } as unknown as ReturnType<typeof $gateway.get>)
+  })
+
+  afterEach(() => {
+    $gateway.set(null)
+  })
+
+  it('approves via approval.respond {choice: "once"} and clears the prompt', async () => {
+    setActiveSessionId('bg')
+    setApprovalRequest({ command: 'rm -rf /', description: 'dangerous', sessionId: 'bg' })
+
+    await respondToApprovalAction('bg', 'approve')
+
+    expect(request).toHaveBeenCalledWith('approval.respond', { choice: 'once', session_id: 'bg' })
+    expect($approvalRequest.get()).toBeNull()
+  })
+
+  it('rejects via approval.respond {choice: "deny"}', async () => {
+    await respondToApprovalAction('bg', 'reject')
+    expect(request).toHaveBeenCalledWith('approval.respond', { choice: 'deny', session_id: 'bg' })
+  })
+
+  it('ignores unknown action ids', async () => {
+    await respondToApprovalAction('bg', 'snooze')
+    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('no-ops without a gateway', async () => {
+    $gateway.set(null)
+    await respondToApprovalAction('bg', 'approve')
+    expect(request).not.toHaveBeenCalled()
   })
 })

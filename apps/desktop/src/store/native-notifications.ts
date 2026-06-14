@@ -2,6 +2,8 @@ import { atom } from 'nanostores'
 
 import { persistString, storedString } from '@/lib/storage'
 
+import { $gateway } from './gateway'
+import { clearApprovalRequest } from './prompts'
 import { $activeSessionId } from './session'
 
 // Native OS notifications (Electron `Notification`) — distinct from the in-app
@@ -115,12 +117,18 @@ function shouldFire(kind: NativeNotificationKind, sessionId?: null | string): bo
   return Boolean(sessionId) && sessionId !== $activeSessionId.get()
 }
 
+export interface NativeNotificationAction {
+  id: string
+  text: string
+}
+
 export interface NativeNotificationInput {
   kind: NativeNotificationKind
   title: string
   body?: string
   sessionId?: null | string
   silent?: boolean
+  actions?: NativeNotificationAction[]
 }
 
 export function dispatchNativeNotification(input: NativeNotificationInput): void {
@@ -145,12 +153,38 @@ export function dispatchNativeNotification(input: NativeNotificationInput): void
   lastFiredAt.set(throttleKey, now)
 
   void window.hermesDesktop?.notify({
+    actions: input.actions,
     body: input.body,
     kind: input.kind,
     sessionId: input.sessionId ?? undefined,
     silent: input.silent,
     title: input.title
   })
+}
+
+// Resolve a pending approval straight from a native notification action button,
+// mirroring the in-app Run/Reject bar (approval.respond {choice, session_id}).
+// Responds by session id — a background session's approval isn't in the
+// active-session view, so there's no local guard to consult.
+export async function respondToApprovalAction(sessionId: null | string, actionId: string): Promise<void> {
+  const choice = actionId === 'approve' ? 'once' : actionId === 'reject' ? 'deny' : null
+
+  if (!choice) {
+    return
+  }
+
+  const gateway = $gateway.get()
+
+  if (!gateway) {
+    return
+  }
+
+  try {
+    await gateway.request('approval.respond', { choice, session_id: sessionId ?? undefined })
+    clearApprovalRequest(sessionId)
+  } catch {
+    // Leave the prompt parked so the user can still resolve it in-app.
+  }
 }
 
 // Settings "send test" button — bypasses gating so the user always sees the

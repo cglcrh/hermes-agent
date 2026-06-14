@@ -134,6 +134,8 @@ export const en: Translations = {
     },
     native: {
       approvalTitle: 'Approval needed',
+      approveAction: 'Approve',
+      rejectAction: 'Reject',
       inputTitle: 'Input needed',
       inputBody: 'Hermes is waiting for your response.',
       turnDoneTitle: 'Hermes finished',

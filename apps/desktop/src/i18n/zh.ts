@@ -130,6 +130,8 @@ export const zh: Translations = {
     },
     native: {
       approvalTitle: '需要批准',
+      approveAction: '批准',
+      rejectAction: '拒绝',
       inputTitle: '需要输入',
       inputBody: 'Hermes 正在等待你的回应。',
       turnDoneTitle: 'Hermes 已完成',

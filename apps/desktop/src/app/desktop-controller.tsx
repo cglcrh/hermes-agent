@@ -37,6 +37,7 @@ import {
   SIDEBAR_SESSIONS_PAGE_SIZE,
   unpinSession
 } from '../store/layout'
+import { respondToApprovalAction } from '../store/native-notifications'
 import { $filePreviewTarget, $previewTarget, closeActiveRightRailTab } from '../store/preview'
 import {
   $activeGatewayProfile,
@@ -280,6 +281,16 @@ export function DesktopController() {
 
     return () => unsubscribe?.()
   }, [navigate])
+
+  // Approve/Reject buttons on an approval notification resolve in place — no
+  // need to bring the window forward or navigate.
+  useEffect(() => {
+    const unsubscribe = window.hermesDesktop?.onNotificationAction?.(({ actionId, sessionId }) => {
+      void respondToApprovalAction(sessionId ?? null, actionId)
+    })
+
+    return () => unsubscribe?.()
+  }, [])
 
   // hermes:// deep links (e.g. a docs "Send to App" button for an automation blueprint).
   // Build the equivalent /blueprint slash command from the payload and drop

@@ -91,6 +91,11 @@ declare global {
       // Fired when the user clicks a native notification: focuses the window and
       // asks the renderer to navigate to the originating session.
       onFocusSession?: (callback: (sessionId: string) => void) => () => void
+      // Fired when the user clicks an inline notification action button (e.g.
+      // Approve/Reject) — resolved without bringing the window forward.
+      onNotificationAction?: (
+        callback: (payload: { actionId: string; sessionId?: string }) => void
+      ) => () => void
       onPreviewFileChanged: (callback: (payload: HermesPreviewFileChanged) => void) => () => void
       onBackendExit: (callback: (payload: BackendExit) => void) => () => void
       onPowerResume?: (callback: () => void) => () => void
@@ -420,6 +425,9 @@ export interface HermesNotification {
   // session to focus when the OS notification is clicked.
   kind?: string
   sessionId?: string
+  // Inline action buttons (macOS signed builds; ignored where unsupported).
+  // `id` is echoed back via onNotificationAction so the renderer can act.
+  actions?: { id: string; text: string }[]
 }
 
 export interface HermesPreviewTarget {
