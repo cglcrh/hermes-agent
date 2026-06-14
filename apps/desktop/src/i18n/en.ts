@@ -307,7 +307,9 @@ export const en: Translations = {
       },
       test: 'Send test notification',
       testTitle: 'Hermes',
-      testBody: 'Notifications are working.'
+      testBody: 'Notifications are working.',
+      testSent: 'Test sent. If nothing appears, check your OS notification permissions and Focus/Do Not Disturb.',
+      testUnsupported: 'This system does not support native notifications.'
     },
     sections: {
       model: 'Model',

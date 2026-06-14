@@ -221,7 +221,10 @@ export const ja = defineLocale({
       },
       test: 'テスト通知を送信',
       testTitle: 'Hermes',
-      testBody: '通知は正常に動作しています。'
+      testBody: '通知は正常に動作しています。',
+      testSent:
+        'テストを送信しました。表示されない場合は、OS の通知許可と集中モード／おやすみモードを確認してください。',
+      testUnsupported: 'このシステムはネイティブ通知に対応していません。'
     },
     sections: {
       model: 'モデル',

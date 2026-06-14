@@ -143,7 +143,19 @@ export function dispatchNativeNotification(input: NativeNotificationInput): void
 }
 
 // Settings "send test" button — bypasses gating so the user always sees the
-// result of flipping a toggle, even with the window focused.
-export function sendTestNativeNotification(title: string, body: string): void {
-  void window.hermesDesktop?.notify({ body, kind: 'turnDone', title })
+// result of flipping a toggle, even with the window focused. Returns whether
+// the OS accepted the notification (false = unsupported / no desktop bridge) so
+// the panel can surface feedback instead of failing silently.
+export async function sendTestNativeNotification(title: string, body: string): Promise<boolean> {
+  const bridge = window.hermesDesktop
+
+  if (!bridge?.notify) {
+    return false
+  }
+
+  try {
+    return await bridge.notify({ body, kind: 'turnDone', title })
+  } catch {
+    return false
+  }
 }

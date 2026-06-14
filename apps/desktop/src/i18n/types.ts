@@ -229,6 +229,8 @@ export interface Translations {
       test: string
       testTitle: string
       testBody: string
+      testSent: string
+      testUnsupported: string
     }
     sections: Record<string, string>
     searchPlaceholder: Record<'about' | 'config' | 'gateway' | 'keys' | 'mcp' | 'sessions', string>

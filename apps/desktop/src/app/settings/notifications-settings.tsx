@@ -12,6 +12,7 @@ import {
   setNativeNotifyEnabled,
   setNativeNotifyKind
 } from '@/store/native-notifications'
+import { notify } from '@/store/notifications'
 
 import { ListRow, SectionHeading, SettingsContent } from './primitives'
 
@@ -19,6 +20,12 @@ export function NotificationsSettings() {
   const { t } = useI18n()
   const prefs = useStore($nativeNotifyPrefs)
   const copy = t.settings.notifications
+
+  const runTest = async () => {
+    triggerHaptic('open')
+    const ok = await sendTestNativeNotification(copy.testTitle, copy.testBody)
+    notify({ kind: ok ? 'info' : 'error', message: ok ? copy.testSent : copy.testUnsupported })
+  }
 
   return (
     <SettingsContent>
@@ -70,10 +77,7 @@ export function NotificationsSettings() {
       <div className="mt-4 flex flex-col gap-2">
         <Button
           className="self-start"
-          onClick={() => {
-            triggerHaptic('open')
-            sendTestNativeNotification(copy.testTitle, copy.testBody)
-          }}
+          onClick={() => void runTest()}
           size="sm"
           type="button"
           variant="outline"
