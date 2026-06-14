@@ -15,8 +15,8 @@ import {
   upsertToolPart
 } from '@/lib/chat-messages'
 import { coerceGatewayText, coerceThinkingText, normalizePersonalityValue } from '@/lib/chat-runtime'
-import { gatewayEventRequiresSessionId } from '@/lib/gateway-events'
 import { playCompletionSound } from '@/lib/completion-sound'
+import { gatewayEventRequiresSessionId } from '@/lib/gateway-events'
 import {
   dedupeGeneratedImageEchoesInParts,
   generatedImageEchoSources,

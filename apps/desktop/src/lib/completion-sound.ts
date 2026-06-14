@@ -1,7 +1,7 @@
 // Completion sound bank for agent turn-end cues.
 // Fourteen curated presets for A/B in Settings → Appearance. Default is variant 1.
 
-import { $completionSoundVariantId } from '@/store/completion-sound'
+import { $completionSoundVariantId, resolveCompletionSoundVariantId } from '@/store/completion-sound'
 import { $hapticsMuted } from '@/store/haptics'
 
 type OscType = OscillatorType
@@ -110,24 +110,31 @@ function bloomVoice(ac: AudioContext, master: GainNode, t0: number, spec: BloomS
   osc.stop(end + 0.02)
 }
 
-// A whisper of bandpassed noise for PS5-menu airiness.
-function airPuff(ac: AudioContext, master: GainNode, t0: number, spec: AirPuffSpec) {
-  const seconds = 0.12
+// One-shot white-noise source of a given length, the raw material for the
+// bandpassed air/whoosh gestures below.
+function noiseSource(ac: AudioContext, seconds: number): AudioBufferSourceNode {
   const length = Math.floor(ac.sampleRate * seconds)
-  const noise = ac.createBuffer(1, length, ac.sampleRate)
-  const data = noise.getChannelData(0)
+  const buffer = ac.createBuffer(1, length, ac.sampleRate)
+  const data = buffer.getChannelData(0)
 
   for (let i = 0; i < length; i += 1) {
     data[i] = Math.random() * 2 - 1
   }
 
   const source = ac.createBufferSource()
+  source.buffer = buffer
+
+  return source
+}
+
+// A whisper of bandpassed noise for PS5-menu airiness.
+function airPuff(ac: AudioContext, master: GainNode, t0: number, spec: AirPuffSpec) {
+  const source = noiseSource(ac, 0.12)
   const filter = ac.createBiquadFilter()
   const env = ac.createGain()
   const start = t0 + (spec.start ?? 0)
   const end = start + spec.decay
 
-  source.buffer = noise
   filter.type = 'bandpass'
   filter.frequency.setValueAtTime(spec.freq, start)
   filter.Q.setValueAtTime(spec.q ?? 1.2, start)
@@ -145,22 +152,12 @@ function airPuff(ac: AudioContext, master: GainNode, t0: number, spec: AirPuffSp
 
 // Filtered noise sweep — soft send / whoosh gestures.
 function whooshVoice(ac: AudioContext, master: GainNode, t0: number, spec: WhooshSpec) {
-  const seconds = 0.4
-  const length = Math.floor(ac.sampleRate * seconds)
-  const noise = ac.createBuffer(1, length, ac.sampleRate)
-  const data = noise.getChannelData(0)
-
-  for (let i = 0; i < length; i += 1) {
-    data[i] = Math.random() * 2 - 1
-  }
-
-  const source = ac.createBufferSource()
+  const source = noiseSource(ac, 0.4)
   const filter = ac.createBiquadFilter()
   const env = ac.createGain()
   const start = t0 + (spec.start ?? 0)
   const end = start + spec.decay
 
-  source.buffer = noise
   filter.type = 'bandpass'
   filter.frequency.setValueAtTime(spec.freqFrom, start)
   filter.frequency.exponentialRampToValueAtTime(spec.freqTo, end)
@@ -201,11 +198,8 @@ function sweepVoice(ac: AudioContext, master: GainNode, t0: number, spec: SweepS
 
 let reverbImpulse: AudioBuffer | null = null
 
-// A short, synthetic reverb tail (decaying noise impulse). Used as a subtle wet
-// send so the chimes feel like they sit in a room rather than a tin can — the
-// detail that nudges them from "arcade beep" toward "polished app". The impulse
-// buffer is generated once and cached; each play gets a fresh, disposable
-// convolver so connections never pile up on a shared node.
+// Subtle wet send so the chimes sit in a room rather than a tin can. The impulse
+// is generated once and cached; each play gets a fresh, disposable convolver.
 function makeReverb(ac: AudioContext): ConvolverNode {
   if (!reverbImpulse) {
     const seconds = 1.6
@@ -414,18 +408,6 @@ export const COMPLETION_SOUND_VARIANTS: readonly CompletionSoundVariant[] = [
   }
 ] as const
 
-export const DEFAULT_COMPLETION_SOUND_VARIANT_ID = 1
-
-export function resolveCompletionSoundVariantId(variantId: number): number {
-  if (!Number.isFinite(variantId)) {
-    return DEFAULT_COMPLETION_SOUND_VARIANT_ID
-  }
-
-  return COMPLETION_SOUND_VARIANTS.some(variant => variant.id === variantId)
-    ? variantId
-    : DEFAULT_COMPLETION_SOUND_VARIANT_ID
-}
-
 function playVariant(variantId: number) {
   const variant = COMPLETION_SOUND_VARIANTS.find(v => v.id === variantId)
 
@@ -440,8 +422,6 @@ function playVariant(variantId: number) {
   }
 
   // Signal path: voices → master → low-pass → (dry + reverb send) → out.
-  // Tuned for the dream-menu default: softer level, a touch more air, longer
-  // wet tail so the bloom feels spacious without a punchy attack.
   const master = ac.createGain()
   const tone = ac.createBiquadFilter()
   tone.type = 'lowpass'
