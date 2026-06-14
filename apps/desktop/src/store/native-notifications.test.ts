@@ -54,20 +54,32 @@ afterEach(() => {
 })
 
 describe('dispatchNativeNotification focus gating', () => {
-  it('fires a completion notification when the window is hidden', () => {
-    dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
+  it('fires a completion notification for the active session when the window is hidden', () => {
+    const sessionId = freshSession()
+    setActiveSessionId(sessionId)
+    dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done' })
     expect(notify).toHaveBeenCalledTimes(1)
   })
 
   it('fires a completion notification when the window is visible but unfocused (alt-tab)', () => {
+    const sessionId = freshSession()
+    setActiveSessionId(sessionId)
     setWindowState({ focused: false, hidden: false })
-    dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
+    dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done' })
     expect(notify).toHaveBeenCalledTimes(1)
   })
 
   it('suppresses a completion notification when the window is focused', () => {
+    const sessionId = freshSession()
+    setActiveSessionId(sessionId)
     setWindowState({ focused: true, hidden: false })
-    dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
+    dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done' })
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('suppresses a completion notification for a non-active background session (no gateway spam)', () => {
+    setActiveSessionId('on-screen')
+    dispatchNativeNotification({ kind: 'turnDone', sessionId: 'busy-bot-session', title: 'done' })
     expect(notify).not.toHaveBeenCalled()
   })
 
@@ -95,15 +107,18 @@ describe('dispatchNativeNotification preferences', () => {
   })
 
   it('suppresses only the disabled kind', () => {
+    const sessionId = freshSession()
+    setActiveSessionId(sessionId)
     setNativeNotifyKind('turnDone', false)
-    dispatchNativeNotification({ kind: 'turnDone', sessionId: freshSession(), title: 'done' })
+    dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done' })
     expect(notify).not.toHaveBeenCalled()
 
-    dispatchNativeNotification({ kind: 'turnError', sessionId: freshSession(), title: 'boom' })
+    dispatchNativeNotification({ kind: 'turnError', sessionId, title: 'boom' })
     expect(notify).toHaveBeenCalledTimes(1)
   })
 
   it('forwards kind and sessionId to the bridge', () => {
+    setActiveSessionId('abc')
     dispatchNativeNotification({ body: 'hi', kind: 'turnError', sessionId: 'abc', title: 'boom' })
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ body: 'hi', kind: 'turnError', sessionId: 'abc', title: 'boom' })
@@ -114,6 +129,7 @@ describe('dispatchNativeNotification preferences', () => {
 describe('dispatchNativeNotification throttle', () => {
   it('collapses duplicate kind+session within the throttle window', () => {
     const sessionId = freshSession()
+    setActiveSessionId(sessionId)
     dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done' })
     dispatchNativeNotification({ kind: 'turnDone', sessionId, title: 'done again' })
     expect(notify).toHaveBeenCalledTimes(1)

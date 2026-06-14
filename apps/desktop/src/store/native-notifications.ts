@@ -104,17 +104,18 @@ function isBackgrounded(): boolean {
 }
 
 function shouldFire(kind: NativeNotificationKind, sessionId?: null | string): boolean {
-  if (isBackgrounded()) {
-    return true
+  // Attention kinds are blocking prompts: surface them when the user is away,
+  // OR when they belong to a session other than the one on screen (a background
+  // session is stuck waiting). These are rare and high-value.
+  if (ATTENTION_KINDS.has(kind)) {
+    return isBackgrounded() || (Boolean(sessionId) && sessionId !== $activeSessionId.get())
   }
 
-  // Hermes is focused: only an attention kind for an off-screen session breaks
-  // through. Everything else is already in front of the user.
-  if (!ATTENTION_KINDS.has(kind)) {
-    return false
-  }
-
-  return Boolean(sessionId) && sessionId !== $activeSessionId.get()
+  // Completion kinds (turn done/error, background done) only notify for the
+  // session the user was actually looking at, and only while they're away. This
+  // keeps a busy gateway (messaging platforms, kanban workers, cron) from
+  // spamming an OS toast for every unrelated background session that finishes.
+  return isBackgrounded() && Boolean(sessionId) && sessionId === $activeSessionId.get()
 }
 
 export interface NativeNotificationAction {
