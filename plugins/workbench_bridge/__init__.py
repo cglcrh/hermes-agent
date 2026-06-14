@@ -26,10 +26,49 @@ DEFAULT_WORKBENCH_TARGET = "v1"
 DEFAULT_V2_RELAY_PATH = "/hermes-relay"
 DEFAULT_V2_RELAY_URL = f"http://127.0.0.1:8790{DEFAULT_V2_RELAY_PATH}"
 DEFAULT_V2_SECRET_ENV = "AIWB_V2_HERMES_RELAY_SECRET"
+HERMES_DELIVERY_SCHEMA_VERSION = 1
 URL_RE = re.compile(r"https?://\S+")
 MEDIA_MESSAGE_TYPES = {"photo", "image", "document", "video", "audio", "voice"}
 V2_GATEWAYS = {"telegram", "feishu", "wechat", "web", "cli"}
 V2_ATTACHMENT_MESSAGE_TYPES = {"photo", "image", "document", "video", "audio", "voice"}
+V2_DELIVERY_GATEWAYS = {"telegram", "feishu", "wechat"}
+V2_DELIVERY_REQUIRED_FIELDS = (
+    "delivery_request_id",
+    "delivery_id",
+    "ticket_ref",
+    "event_session_id",
+    "action_set_id",
+    "gateway",
+    "conversation_ref",
+    "message_text",
+    "copy_block",
+    "idempotency_key",
+)
+V2_DELIVERY_FORBIDDEN_KEYS = {
+    "active_prompt",
+    "agent_loop",
+    "authorization",
+    "cookie",
+    "headers",
+    "memory_write",
+    "provider_dispatch",
+    "raw_body",
+    "raw_event",
+    "raw_headers",
+    "raw_payload",
+    "raw_response",
+    "raw_update",
+    "secret",
+    "set_cookie",
+    "telegram_bot_token",
+    "token",
+    "webhook_secret",
+}
+SECRET_TEXT_RE = re.compile(
+    r"(?i)(authorization\s*:\s*bearer\s+\S+|token\s*[:=]\s*[^&\s;,]+|secret\s*[:=]\s*[^&\s;,]+|session=|xox[baprs]-|bot\d+:)"
+)
+SAFE_DELIVERY_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,160}$")
+_V2_DELIVERY_ATTEMPTS: set[str] = set()
 
 
 def register(ctx) -> None:
@@ -293,6 +332,183 @@ async def _send_reply(gateway, event, message: str) -> None:
             )
             await asyncio.sleep(delay)
     logger.error("Workbench bridge reply failed after %s attempt(s): %s", attempts, last_error)
+
+
+async def send_v2_delivery_request(
+    gateway,
+    payload: dict[str, Any],
+    *,
+    ledger: set[str] | None = None,
+) -> dict[str, Any]:
+    """Send a v2 normalized delivery request through Hermes gateway adapters.
+
+    This is intentionally not wired into the agent loop. Callers must pass an
+    already-running gateway object; Hermes owns platform credentials and v2 only
+    receives the sanitized result.
+    """
+
+    parsed = _parse_v2_delivery_request(payload)
+    if not parsed["ok"]:
+        return parsed
+    request = parsed["request"]
+    ledger = _V2_DELIVERY_ATTEMPTS if ledger is None else ledger
+    attempt_key = str(request["idempotency_key"])
+    if attempt_key in ledger:
+        return _delivery_result(
+            "blocked",
+            "send_already_used",
+            request=request,
+            limitations=("delivery request idempotency key was already consumed",),
+        )
+    adapter = getattr(gateway, "adapters", {}).get(_platform_key(request["gateway"]))
+    if adapter is None:
+        return _delivery_result(
+            "blocked",
+            "runtime_unavailable",
+            request=request,
+            limitations=("gateway adapter is not available in this Hermes runtime",),
+        )
+    ledger.add(attempt_key)
+    try:
+        result = await adapter.send(str(request["conversation_ref"]), str(request["message_text"]), metadata={})
+    except Exception as exc:
+        return _delivery_result(
+            "failed",
+            "adapter_failed",
+            request=request,
+            failure_reason=type(exc).__name__,
+        )
+    if getattr(result, "success", True) is False:
+        return _delivery_result(
+            "failed",
+            "adapter_failed",
+            request=request,
+            failure_reason=_safe_failure_reason(getattr(result, "error", None)),
+        )
+    message_ref = _safe_delivery_ref(getattr(result, "message_id", None))
+    return _delivery_result(
+        "delivered",
+        "delivered",
+        request=request,
+        gateway_message_ref=message_ref,
+    )
+
+
+def _parse_v2_delivery_request(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return _delivery_rejected("invalid_schema", "payload must be an object")
+    if _contains_forbidden_delivery_payload(payload):
+        return _delivery_rejected("forbidden_payload", "payload contains token/secret/raw/control-plane fields")
+    schema_version = payload.get("schema_version", HERMES_DELIVERY_SCHEMA_VERSION)
+    if schema_version != HERMES_DELIVERY_SCHEMA_VERSION:
+        return _delivery_rejected("unsupported_schema_version", "unsupported schema_version")
+    missing = [field for field in V2_DELIVERY_REQUIRED_FIELDS if not _safe_text(payload.get(field))]
+    if missing:
+        return _delivery_rejected("missing_required_field", ",".join(missing))
+    gateway_name = str(payload["gateway"]).strip().lower()
+    if gateway_name not in V2_DELIVERY_GATEWAYS:
+        return _delivery_rejected("unsupported_gateway", "gateway is not supported for v2 delivery relay")
+    ticket_ref = str(payload["ticket_ref"]).strip()
+    copy_block = str(payload["copy_block"])
+    message_text = str(payload["message_text"])
+    if not re.fullmatch(r"[a-z0-9]{12}", ticket_ref):
+        return _delivery_rejected("invalid_ticket_ref", "ticket_ref must be 12 lowercase letters/digits")
+    if f"收件编号\n{ticket_ref} 选" != copy_block or copy_block not in message_text:
+        return _delivery_rejected("missing_copy_block", "message_text must contain the exact ticket copy block")
+    if not message_text.startswith("AIWB 已收件"):
+        return _delivery_rejected("not_human_first", "message_text must be human-readable first")
+    request = {
+        "delivery_request_id": _safe_text(payload["delivery_request_id"]),
+        "delivery_id": _safe_text(payload["delivery_id"]),
+        "ticket_ref": ticket_ref,
+        "event_session_id": _safe_text(payload["event_session_id"]),
+        "action_set_id": _safe_text(payload["action_set_id"]),
+        "gateway": gateway_name,
+        "conversation_ref": _safe_text(payload["conversation_ref"]),
+        "message_text": message_text,
+        "copy_block": copy_block,
+        "idempotency_key": _safe_text(payload["idempotency_key"]),
+    }
+    return {"ok": True, "request": request}
+
+
+def _delivery_rejected(reason: str, message: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "rejected",
+        "reason": reason,
+        "failure_reason": message,
+        "gateway_message_ref": None,
+        "limitations": ["Hermes rejected the v2 delivery request before gateway send."],
+    }
+
+
+def _delivery_result(
+    status: str,
+    reason: str,
+    *,
+    request: dict[str, Any],
+    gateway_message_ref: str | None = None,
+    failure_reason: str | None = None,
+    limitations: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    return {
+        "ok": status == "delivered",
+        "status": status,
+        "reason": reason,
+        "delivery_request_id": request.get("delivery_request_id"),
+        "delivery_id": request.get("delivery_id"),
+        "ticket_ref": request.get("ticket_ref"),
+        "gateway": request.get("gateway"),
+        "gateway_message_ref": gateway_message_ref,
+        "failure_reason": _safe_failure_reason(failure_reason),
+        "limitations": list(limitations),
+    }
+
+
+def _contains_forbidden_delivery_payload(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            key_text = str(key).strip().lower()
+            if key_text in V2_DELIVERY_FORBIDDEN_KEYS or "token" in key_text or "secret" in key_text:
+                return True
+            if _contains_forbidden_delivery_payload(nested):
+                return True
+        return False
+    if isinstance(value, (list, tuple, set)):
+        return any(_contains_forbidden_delivery_payload(item) for item in value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        return bool(SECRET_TEXT_RE.search(value) or "raw platform payload" in lowered)
+    return False
+
+
+def _safe_delivery_ref(value: Any) -> str | None:
+    text = _safe_text(value)
+    if not text or _contains_forbidden_delivery_payload(text):
+        return None
+    if any(char in text for char in ("\x00", "\n", "\r", "\t", "?", "#", "=")):
+        return None
+    return text if SAFE_DELIVERY_REF_RE.fullmatch(text) else None
+
+
+def _safe_failure_reason(value: Any) -> str | None:
+    text = _safe_text(value)
+    if not text:
+        return None
+    if _contains_forbidden_delivery_payload(text):
+        return "<redacted>"
+    return text.replace("\r", " ").replace("\n", " ")[:240]
+
+
+def _platform_key(value: Any) -> Any:
+    text = str(value or "").strip().lower()
+    try:
+        from gateway.config import Platform
+
+        return Platform(text)
+    except Exception:
+        return text
 
 
 def _workbench_url() -> str:

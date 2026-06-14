@@ -49,6 +49,27 @@ def _uncached_photo_event() -> MessageEvent:
     return event
 
 
+def _delivery_request(**overrides):
+    payload = {
+        "schema_version": 1,
+        "delivery_request_id": "hermes-delivery-1",
+        "delivery_id": "delivery-1",
+        "ticket_ref": "8f3a91c2d740",
+        "event_session_id": "event-session-1",
+        "action_set_id": "action-set-1",
+        "gateway": "telegram",
+        "conversation_ref": "tg-chat-1",
+        "message_text": "AIWB 已收件\n\n收件编号\n8f3a91c2d740 选\n\n下一步\n1. 保存",
+        "copy_block": "收件编号\n8f3a91c2d740 选",
+        "idempotency_key": "hgp-safe-key-1",
+        "created_at": "2026-06-14T08:20:00+00:00",
+        "policy": {"allow_send_once": True},
+        "metadata": {"source": "aiwb-v2"},
+    }
+    payload.update(overrides)
+    return payload
+
+
 @pytest.mark.asyncio
 async def test_bridge_forwards_and_skips(monkeypatch):
     sent_payload = {}
@@ -325,3 +346,111 @@ def test_post_v2_relay_uses_configured_secret_env(monkeypatch):
     assert json.loads(captured["body"]) == {"schema_version": 1}
     assert captured["headers"]["X-aiwb-hermes-relay-secret"] == "test-secret"
     assert captured["timeout"] == 7
+
+
+@pytest.mark.asyncio
+async def test_v2_delivery_request_sends_through_existing_gateway_adapter():
+    adapter = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(success=True, message_id="tg-message-1")))
+    gateway = SimpleNamespace(adapters={Platform.TELEGRAM: adapter})
+    ledger = set()
+
+    result = await workbench_bridge.send_v2_delivery_request(gateway, _delivery_request(), ledger=ledger)
+
+    assert result["ok"] is True
+    assert result["status"] == "delivered"
+    assert result["gateway_message_ref"] == "tg-message-1"
+    assert result["ticket_ref"] == "8f3a91c2d740"
+    adapter.send.assert_awaited_once_with("tg-chat-1", _delivery_request()["message_text"], metadata={})
+    assert "hgp-safe-key-1" in ledger
+    assert "raw_response" not in json.dumps(result, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_v2_delivery_request_blocks_duplicate_send_once():
+    adapter = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(success=True, message_id="tg-message-1")))
+    gateway = SimpleNamespace(adapters={Platform.TELEGRAM: adapter})
+    ledger = {"hgp-safe-key-1"}
+
+    result = await workbench_bridge.send_v2_delivery_request(gateway, _delivery_request(), ledger=ledger)
+
+    assert result["ok"] is False
+    assert result["status"] == "blocked"
+    assert result["reason"] == "send_already_used"
+    adapter.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_v2_delivery_request_rejects_secret_raw_and_control_plane_payloads():
+    gateway = SimpleNamespace(adapters={})
+
+    missing = await workbench_bridge.send_v2_delivery_request(gateway, _delivery_request(ticket_ref=""), ledger=set())
+    secret = await workbench_bridge.send_v2_delivery_request(
+        gateway,
+        _delivery_request(metadata={"authorization": "Bearer abc"}),
+        ledger=set(),
+    )
+    raw = await workbench_bridge.send_v2_delivery_request(
+        gateway,
+        _delivery_request(raw_payload={"update_id": 123}),
+        ledger=set(),
+    )
+    control = await workbench_bridge.send_v2_delivery_request(
+        gateway,
+        _delivery_request(agent_loop=True),
+        ledger=set(),
+    )
+
+    assert missing["status"] == "rejected"
+    assert missing["reason"] == "missing_required_field"
+    assert secret["reason"] == "forbidden_payload"
+    assert raw["reason"] == "forbidden_payload"
+    assert control["reason"] == "forbidden_payload"
+
+
+@pytest.mark.asyncio
+async def test_v2_delivery_request_rejects_bad_copy_block_and_unsupported_gateway():
+    gateway = SimpleNamespace(adapters={})
+
+    bad_copy = await workbench_bridge.send_v2_delivery_request(
+        gateway,
+        _delivery_request(copy_block="收件编号\nwrong 选"),
+        ledger=set(),
+    )
+    unsupported = await workbench_bridge.send_v2_delivery_request(
+        gateway,
+        _delivery_request(gateway="cli"),
+        ledger=set(),
+    )
+
+    assert bad_copy["status"] == "rejected"
+    assert bad_copy["reason"] == "missing_copy_block"
+    assert unsupported["reason"] == "unsupported_gateway"
+
+
+@pytest.mark.asyncio
+async def test_v2_delivery_result_sanitizes_adapter_failure_and_message_ref():
+    failed_adapter = SimpleNamespace(
+        send=AsyncMock(return_value=SimpleNamespace(success=False, error="Authorization: Bearer abc"))
+    )
+    unsafe_ref_adapter = SimpleNamespace(
+        send=AsyncMock(return_value=SimpleNamespace(success=True, message_id="msg?token=abc", raw_response={"token": "x"}))
+    )
+
+    failed = await workbench_bridge.send_v2_delivery_request(
+        SimpleNamespace(adapters={Platform.TELEGRAM: failed_adapter}),
+        _delivery_request(idempotency_key="hgp-safe-key-2"),
+        ledger=set(),
+    )
+    unsafe_ref = await workbench_bridge.send_v2_delivery_request(
+        SimpleNamespace(adapters={Platform.TELEGRAM: unsafe_ref_adapter}),
+        _delivery_request(idempotency_key="hgp-safe-key-3"),
+        ledger=set(),
+    )
+
+    rendered = json.dumps({"failed": failed, "unsafe_ref": unsafe_ref}, ensure_ascii=False)
+    assert failed["status"] == "failed"
+    assert failed["failure_reason"] == "<redacted>"
+    assert unsafe_ref["status"] == "delivered"
+    assert unsafe_ref["gateway_message_ref"] is None
+    assert "Bearer abc" not in rendered
+    assert "token" not in rendered.lower()
