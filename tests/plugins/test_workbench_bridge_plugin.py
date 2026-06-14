@@ -214,6 +214,86 @@ async def test_bridge_v2_mode_forwards_normalized_relay_payload(monkeypatch):
     adapter.send.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_bridge_v2_mode_passes_safe_copy_button_metadata(monkeypatch):
+    def fake_post(url, payload, timeout):
+        return {
+            "message": "AIWB 已收件",
+            "reply_actions": [
+                {
+                    "kind": "copy_text",
+                    "label": "复制收件编号",
+                    "text": "8f3a91c2d740 选",
+                    "ticket_ref": "8f3a91c2d740",
+                }
+            ],
+        }
+
+    monkeypatch.setenv("HERMES_WORKBENCH_TARGET", "v2")
+    monkeypatch.setenv("HERMES_WORKBENCH_V2_RELAY_URL", "http://127.0.0.1:8790/hermes-relay")
+    monkeypatch.setattr(workbench_bridge, "_post_v2_relay", fake_post)
+
+    adapter = SimpleNamespace(send=AsyncMock())
+    event = _event()
+    event.source.platform = Platform.TELEGRAM
+    gateway = SimpleNamespace(adapters={Platform.TELEGRAM: adapter})
+
+    workbench_bridge._pre_gateway_dispatch(event, gateway)
+    for _ in range(20):
+        if adapter.send.await_count:
+            break
+        await asyncio.sleep(0.01)
+
+    metadata = adapter.send.await_args.kwargs["metadata"]
+    assert metadata == {
+        "telegram_copy_text_buttons": [
+            {
+                "label": "复制收件编号",
+                "text": "8f3a91c2d740 选",
+                "ticket_ref": "8f3a91c2d740",
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_bridge_v2_mode_rejects_unsafe_copy_button_metadata(monkeypatch):
+    def fake_post(url, payload, timeout):
+        return {
+            "message": "AIWB 已收件",
+            "reply_actions": [
+                {
+                    "kind": "copy_text",
+                    "label": "打开链接",
+                    "text": "https://example.com",
+                    "ticket_ref": "8f3a91c2d740",
+                },
+                {
+                    "kind": "copy_text",
+                    "label": "复制",
+                    "text": "8f3a91c2d740 选",
+                    "ticket_ref": "bad",
+                },
+            ],
+        }
+
+    monkeypatch.setenv("HERMES_WORKBENCH_TARGET", "v2")
+    monkeypatch.setattr(workbench_bridge, "_post_v2_relay", fake_post)
+
+    adapter = SimpleNamespace(send=AsyncMock())
+    event = _event()
+    event.source.platform = Platform.TELEGRAM
+    gateway = SimpleNamespace(adapters={Platform.TELEGRAM: adapter})
+
+    workbench_bridge._pre_gateway_dispatch(event, gateway)
+    for _ in range(20):
+        if adapter.send.await_count:
+            break
+        await asyncio.sleep(0.01)
+
+    assert adapter.send.await_args.kwargs["metadata"] is None
+
+
 def test_bridge_v2_media_payload_uses_opaque_attachment_ref():
     payload = workbench_bridge._build_v2_relay_payload(
         _media_event(),

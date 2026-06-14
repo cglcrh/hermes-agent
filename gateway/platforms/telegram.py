@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 try:
     from telegram import Update, Bot, Message, InlineKeyboardButton, InlineKeyboardMarkup
     try:
+        from telegram import CopyTextButton
+    except ImportError:
+        CopyTextButton = None
+    try:
         from telegram import LinkPreviewOptions
     except ImportError:
         LinkPreviewOptions = None
@@ -45,6 +49,7 @@ except ImportError:
     Message = Any
     InlineKeyboardButton = Any
     InlineKeyboardMarkup = Any
+    CopyTextButton = None
     LinkPreviewOptions = None
     Application = Any
     CommandHandler = Any
@@ -120,7 +125,7 @@ def check_telegram_requirements() -> bool:
     global TELEGRAM_AVAILABLE, Update, Bot, Message, InlineKeyboardButton
     global InlineKeyboardMarkup, LinkPreviewOptions, Application
     global CommandHandler, CallbackQueryHandler, TelegramMessageHandler
-    global ContextTypes, filters, ParseMode, ChatType, HTTPXRequest
+    global ContextTypes, filters, ParseMode, ChatType, HTTPXRequest, CopyTextButton
     if TELEGRAM_AVAILABLE:
         return True
     try:
@@ -131,6 +136,10 @@ def check_telegram_requirements() -> bool:
     try:
         from telegram import Update as _Update, Bot as _Bot, Message as _Message
         from telegram import InlineKeyboardButton as _IKB, InlineKeyboardMarkup as _IKM
+        try:
+            from telegram import CopyTextButton as _CTB
+        except ImportError:
+            _CTB = None
         try:
             from telegram import LinkPreviewOptions as _LPO
         except ImportError:
@@ -150,6 +159,7 @@ def check_telegram_requirements() -> bool:
     Message = _Message
     InlineKeyboardButton = _IKB
     InlineKeyboardMarkup = _IKM
+    CopyTextButton = _CTB
     LinkPreviewOptions = _LPO
     Application = _App
     CommandHandler = _CH
@@ -162,6 +172,41 @@ def check_telegram_requirements() -> bool:
     HTTPXRequest = _HR
     TELEGRAM_AVAILABLE = True
     return True
+
+
+def _telegram_copy_text_buttons(metadata: Optional[Dict[str, Any]]) -> list[dict[str, str]]:
+    if not isinstance(metadata, dict):
+        return []
+    raw_buttons = metadata.get("telegram_copy_text_buttons")
+    if not isinstance(raw_buttons, list):
+        return []
+    buttons: list[dict[str, str]] = []
+    for raw in raw_buttons[:1]:
+        if not isinstance(raw, dict):
+            continue
+        label = raw.get("label")
+        text = raw.get("text")
+        if isinstance(label, str) and isinstance(text, str) and label.strip() and text.strip():
+            buttons.append({"label": label.strip()[:20], "text": text.strip()[:128]})
+    return buttons
+
+
+def _telegram_copy_text_reply_markup(metadata: Optional[Dict[str, Any]], *, chunk_index: int) -> Any:
+    if chunk_index != 0 or CopyTextButton is None:
+        return None
+    buttons = _telegram_copy_text_buttons(metadata)
+    if not buttons:
+        return None
+    rows = [
+        [
+            InlineKeyboardButton(
+                button["label"],
+                copy_text=CopyTextButton(text=button["text"]),
+            )
+        ]
+        for button in buttons
+    ]
+    return InlineKeyboardMarkup(rows)
 
 
 # Matches every character that MarkdownV2 requires to be backslash-escaped
@@ -2204,7 +2249,7 @@ class TelegramAdapter(BasePlatformAdapter):
             # through to the legacy MarkdownV2 path on permanent/capability
             # errors or DM-topic routing skips; returns directly on success or
             # on a transient failure (which must NOT be legacy-resent).
-            if self._should_attempt_rich(content, metadata=metadata):
+            if not _telegram_copy_text_buttons(metadata) and self._should_attempt_rich(content, metadata=metadata):
                 rich_result = await self._try_send_rich(chat_id, content, reply_to, metadata)
                 if rich_result is not None:
                     if rich_result.success:
@@ -2291,6 +2336,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     thread_kwargs = dict(thread_kwargs)
                     thread_kwargs["message_thread_id"] = None
                 effective_thread_id = thread_kwargs.get("message_thread_id")
+                reply_markup = _telegram_copy_text_reply_markup(metadata, chunk_index=i)
 
                 msg = None
                 for _send_attempt in range(3):
@@ -2302,6 +2348,7 @@ class TelegramAdapter(BasePlatformAdapter):
                                 text=chunk,
                                 parse_mode=ParseMode.MARKDOWN_V2,
                                 reply_to_message_id=reply_to_id,
+                                reply_markup=reply_markup,
                                 **thread_kwargs,
                                 **self._link_preview_kwargs(),
                                 **self._notification_kwargs(metadata),
@@ -2316,6 +2363,7 @@ class TelegramAdapter(BasePlatformAdapter):
                                     text=plain_chunk,
                                     parse_mode=None,
                                     reply_to_message_id=reply_to_id,
+                                    reply_markup=reply_markup,
                                     **thread_kwargs,
                                     **self._link_preview_kwargs(),
                                     **self._notification_kwargs(metadata),

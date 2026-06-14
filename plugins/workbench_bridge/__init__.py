@@ -68,6 +68,7 @@ SECRET_TEXT_RE = re.compile(
     r"(?i)(authorization\s*:\s*bearer\s+\S+|token\s*[:=]\s*[^&\s;,]+|secret\s*[:=]\s*[^&\s;,]+|session=|xox[baprs]-|bot\d+:)"
 )
 SAFE_DELIVERY_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,160}$")
+SAFE_TICKET_REF_RE = re.compile(r"^[a-z0-9]{12}$")
 _V2_DELIVERY_ATTEMPTS: set[str] = set()
 
 
@@ -100,13 +101,16 @@ def _pre_gateway_dispatch(event, gateway, **_kwargs) -> dict | None:
     timeout = _timeout_seconds()
 
     async def _forward_and_reply() -> None:
+        metadata = None
         try:
             response = await asyncio.to_thread(_post_target, target, payload, timeout)
             message = str(response.get("message") or "已转发到 91 AI Workbench。")
+            if target == "v2":
+                metadata = _v2_reply_metadata(response, platform=platform)
         except Exception as exc:
             logger.warning("Workbench bridge forwarding failed after %.1fs: %s", timeout, exc)
             message = f"⚠️ Workbench 转发失败：{exc}"
-        await _send_reply(gateway, event, message)
+        await _send_reply(gateway, event, message, extra_metadata=metadata)
 
     try:
         loop = asyncio.get_running_loop()
@@ -294,7 +298,7 @@ def _post_json(
     return json.loads(raw)
 
 
-async def _send_reply(gateway, event, message: str) -> None:
+async def _send_reply(gateway, event, message: str, *, extra_metadata: dict[str, Any] | None = None) -> None:
     source = getattr(event, "source", None)
     adapter = getattr(gateway, "adapters", {}).get(getattr(source, "platform", None))
     if adapter is None:
@@ -306,6 +310,8 @@ async def _send_reply(gateway, event, message: str) -> None:
             metadata = gateway._thread_metadata_for_source(source)
         except Exception:
             metadata = None
+    if extra_metadata:
+        metadata = {**(metadata or {}), **extra_metadata}
     chat_id = getattr(source, "chat_id", None)
     attempts = _reply_attempts()
     last_error = None
@@ -332,6 +338,40 @@ async def _send_reply(gateway, event, message: str) -> None:
             )
             await asyncio.sleep(delay)
     logger.error("Workbench bridge reply failed after %s attempt(s): %s", attempts, last_error)
+
+
+def _v2_reply_metadata(response: dict[str, Any], *, platform: str) -> dict[str, Any] | None:
+    if platform != "telegram":
+        return None
+    buttons = []
+    actions = response.get("reply_actions")
+    if not isinstance(actions, list):
+        return None
+    for action in actions:
+        button = _v2_copy_text_button(action)
+        if button is not None:
+            buttons.append(button)
+    if not buttons:
+        return None
+    return {"telegram_copy_text_buttons": buttons[:1]}
+
+
+def _v2_copy_text_button(action: Any) -> dict[str, str] | None:
+    if not isinstance(action, dict) or action.get("kind") != "copy_text":
+        return None
+    ticket_ref = action.get("ticket_ref")
+    text = action.get("text")
+    label = action.get("label")
+    if not isinstance(ticket_ref, str) or not SAFE_TICKET_REF_RE.fullmatch(ticket_ref):
+        return None
+    if text != f"{ticket_ref} 选":
+        return None
+    if not isinstance(label, str):
+        return None
+    label = label.strip()
+    if not label or len(label) > 20 or SECRET_TEXT_RE.search(label):
+        return None
+    return {"label": label, "text": text, "ticket_ref": ticket_ref}
 
 
 async def send_v2_delivery_request(

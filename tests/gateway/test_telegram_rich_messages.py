@@ -17,6 +17,7 @@ import pytest
 
 from gateway.config import PlatformConfig
 from gateway.platforms.base import SendResult
+from gateway.platforms import telegram as tg
 from gateway.platforms.telegram import TelegramAdapter
 from telegram.error import BadRequest, NetworkError, TimedOut
 
@@ -85,6 +86,45 @@ async def test_rich_result_shapes_extract_message_id(raw, expected_id):
     assert bot is not None
     bot.do_api_request.assert_awaited_once()
     bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_copy_text_metadata_renders_inline_copy_button(monkeypatch):
+    class FakeCopyTextButton:
+        def __init__(self, text):
+            self.text = text
+
+    class FakeInlineKeyboardButton:
+        def __init__(self, label, *, copy_text=None):
+            self.label = label
+            self.copy_text = copy_text
+
+    class FakeInlineKeyboardMarkup:
+        def __init__(self, rows):
+            self.rows = rows
+
+    monkeypatch.setattr(tg, "CopyTextButton", FakeCopyTextButton)
+    monkeypatch.setattr(tg, "InlineKeyboardButton", FakeInlineKeyboardButton)
+    monkeypatch.setattr(tg, "InlineKeyboardMarkup", FakeInlineKeyboardMarkup)
+
+    adapter = _make_adapter()
+
+    result = await adapter.send(
+        "12345",
+        "AIWB 已收件",
+        metadata={
+            "telegram_copy_text_buttons": [
+                {"label": "复制收件编号", "text": "8f3a91c2d740 选"}
+            ]
+        },
+    )
+
+    assert result.success is True
+    adapter._bot.do_api_request.assert_not_called()
+    kwargs = adapter._bot.send_message.await_args.kwargs
+    markup = kwargs["reply_markup"]
+    assert markup.rows[0][0].label == "复制收件编号"
+    assert markup.rows[0][0].copy_text.text == "8f3a91c2d740 选"
 
 
 @pytest.mark.asyncio
