@@ -103,6 +103,12 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
               />
             )
           })}
+          <OverlayNavItem
+            active={activeView === 'notifications'}
+            icon={Bell}
+            label={t.settings.nav.notifications}
+            onClick={() => setActiveView('notifications')}
+          />
           <div className="my-2 h-px bg-border/30" />
           <OverlayNavItem
             active={activeView === 'providers'}
@@ -163,12 +169,6 @@ export function SettingsView({ gateway, onClose, onConfigSaved, onMainModelChang
             icon={Wrench}
             label={t.settings.nav.mcp}
             onClick={() => setActiveView('mcp')}
-          />
-          <OverlayNavItem
-            active={activeView === 'notifications'}
-            icon={Bell}
-            label={t.settings.nav.notifications}
-            onClick={() => setActiveView('notifications')}
           />
           <OverlayNavItem
             active={activeView === 'sessions'}
