@@ -270,8 +270,7 @@ export function DesktopController() {
     }
   }, [])
 
-  // Clicking a native OS notification routes here to surface the conversation
-  // that fired it (the main process already brought the window forward).
+  // Notification click: the main process already focused the window; jump to its session.
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onFocusSession?.(sessionId => {
       if (sessionId) {
@@ -282,8 +281,7 @@ export function DesktopController() {
     return () => unsubscribe?.()
   }, [navigate])
 
-  // Approve/Reject buttons on an approval notification resolve in place — no
-  // need to bring the window forward or navigate.
+  // Notification action button (Approve/Reject) — resolve in place, no navigation.
   useEffect(() => {
     const unsubscribe = window.hermesDesktop?.onNotificationAction?.(({ actionId, sessionId }) => {
       void respondToApprovalAction(sessionId ?? null, actionId)

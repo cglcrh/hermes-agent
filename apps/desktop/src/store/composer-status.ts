@@ -163,8 +163,7 @@ export function reconcileBackgroundProcesses(sid: string, procs: GatewayProcessE
 
   const prev = $backgroundStatusBySession.get()[sid] ?? []
 
-  // A process that was running on the previous snapshot and now reports as
-  // exited just finished — fire a native notification (gated on focus/prefs).
+  // running → exited since the last snapshot = a background process just finished.
   const prevState = new Map(prev.map(item => [item.id, item.state]))
 
   for (const [id, item] of fresh) {

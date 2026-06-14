@@ -5609,9 +5609,8 @@ ipcMain.handle('hermes:api', async (_event, request) => {
 
 ipcMain.handle('hermes:notify', (_event, payload) => {
   if (!Notification.isSupported()) return false
-  // Inline action buttons (Approve/Reject). Only macOS reliably renders these,
-  // and typically only on signed builds; elsewhere they're silently dropped and
-  // the body-click fallback still works.
+  // Action buttons render only on signed macOS builds; elsewhere they're dropped
+  // and the body click still works.
   const actions = Array.isArray(payload?.actions) ? payload.actions : []
   const notification = new Notification({
     title: payload?.title || 'Hermes',
@@ -5619,26 +5618,18 @@ ipcMain.handle('hermes:notify', (_event, payload) => {
     silent: Boolean(payload?.silent),
     actions: actions.map(action => ({ type: 'button', text: String(action?.text || '') }))
   })
-  // Clicking the OS notification brings Hermes forward and (if the payload
-  // carries a session) asks the renderer to jump to that conversation.
   notification.on('click', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     focusWindow(mainWindow)
-    const sessionId = payload?.sessionId
-    if (sessionId) {
-      mainWindow.webContents.send('hermes:focus-session', sessionId)
+    if (payload?.sessionId) {
+      mainWindow.webContents.send('hermes:focus-session', payload.sessionId)
     }
   })
-  // An action button resolves in place (e.g. approve/reject) without stealing
-  // focus — the whole point is not having to return to the app.
   notification.on('action', (_actionEvent, index) => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     const action = actions[index]
     if (action?.id) {
-      mainWindow.webContents.send('hermes:notification-action', {
-        sessionId: payload?.sessionId,
-        actionId: action.id
-      })
+      mainWindow.webContents.send('hermes:notification-action', { sessionId: payload?.sessionId, actionId: action.id })
     }
   })
   notification.show()
